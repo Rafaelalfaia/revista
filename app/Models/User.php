@@ -2,46 +2,55 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+use Spatie\Permission\Traits\HasRoles;
+
 class User extends Authenticatable
 {
     use HasFactory, Notifiable;
+    use HasRoles;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-    ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var array<int, string>
-     */
+
+    protected $fillable = ['name','email','password','cpf','created_by_id'];
+
+    public function createdBy()  { return $this->belongsTo(User::class, 'created_by_id'); }
+    public function categories() { return $this->belongsToMany(Category::class)->withTimestamps(); }
+
+
     protected $hidden = [
-        'password',
-        'remember_token',
+        'password', 'remember_token',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password'          => 'hashed',
+    ];
+
+    public function reviews()
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return $this->hasMany(\App\Models\Review::class, 'reviewer_id');
     }
+
+    public function expertiseCategories()
+    {
+        return $this->belongsToMany(
+            \App\Models\Category::class,
+            'reviewer_categories', 'reviewer_id', 'category_id'
+        )->withTimestamps();
+    }
+
+    public function openReviews()
+    {
+        return $this->reviews()->whereIn('status', ['atribuida','em_revisao','revisao_solicitada']);
+    }
+
+
+    public function reviewAssignments() {
+        return $this->hasMany(\App\Models\ReviewAssignment::class, 'reviewer_id');
+    }
+
 }
