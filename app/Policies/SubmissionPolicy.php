@@ -9,7 +9,6 @@ class SubmissionPolicy
 {
   public function viewAny(User $u): bool
   {
-    // pode listar as próprias submissões
     return true;
   }
 
@@ -25,8 +24,7 @@ class SubmissionPolicy
 
   public function update(User $u, Submission $s): bool
   {
-    // autor do trabalho, e status permitindo edição
-    return $s->user_id === $u->id && $s->canEditContent();
+    return $s->user_id === $u->id && ($s->isDraft() || $s->status === Submission::ST_REV_REQ);
   }
 
   public function delete(User $u, Submission $s): bool
@@ -39,7 +37,6 @@ class SubmissionPolicy
     return $s->user_id === $u->id && $s->canSubmit();
   }
 
-  // Se quiser validar upload/edição de arquivos pela mesma regra:
   public function upload(User $u, Submission $s): bool
   {
     return $this->update($u, $s);

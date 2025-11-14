@@ -14,7 +14,7 @@ class UserController extends Controller
 {
     public function __construct()
     {
-        // Gate por permissão (do Spatie). Definidas no PermissionsSeeder.
+
         $this->middleware('permission:users.view')->only(['index']);
         $this->middleware('permission:users.manage')->only(['create','store','edit','update','destroy']);
     }
@@ -26,7 +26,7 @@ class UserController extends Controller
         $users = User::query()
             ->when($q, fn($w) =>
                 $w->where(function($x) use ($q){
-                    // Postgres-friendly: ILIKE
+
                     $x->where('name', 'ilike', "%{$q}%")
                       ->orWhere('email','ilike', "%{$q}%");
                 })
@@ -56,7 +56,7 @@ class UserController extends Controller
         $user->password = Hash::make($data['password']);
         $user->save();
 
-        // Papel único (se quiser múltiplos, trocar para array/checkbox)
+
         $user->syncRoles([$data['role']]);
 
         return redirect()->route('admin.users.index')
@@ -91,7 +91,7 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
-        // Evita excluir a si mesmo (opcional, mas recomendado)
+
         if (auth()->id() === $user->id) {
             return back()->with('err','Você não pode excluir sua própria conta.');
         }

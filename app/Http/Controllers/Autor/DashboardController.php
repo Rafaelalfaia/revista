@@ -3,32 +3,62 @@
 namespace App\Http\Controllers\Autor;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
 use App\Models\Submission;
-use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $uid = Auth::id();
+        $user = $request->user();
 
-        $base = Submission::where('user_id', $uid);
+        $base = Submission::query()
+            ->select('id','title','slug','status','submitted_at','updated_at','published_at')
+            ->where('user_id', $user->id);
+
+        $with = ['categories:id,name'];
+
         $stats = [
-            'total'      => (clone $base)->count(),
-            'rascunho'   => (clone $base)->where('status','rascunho')->count(),
-            'submetido'  => (clone $base)->where('status','submetido')->count(),
-            'revisao'    => (clone $base)->where('status','em_revisao')->count(),
-            'corrigir'   => (clone $base)->where('status','revisao_solicitada')->count(),
-            'aceito'     => (clone $base)->where('status','aceito')->count(),
-            'rejeitado'  => (clone $base)->where('status','rejeitado')->count(),
-            'publicado'  => (clone $base)->where('status','publicado')->count(),
+            'total'               => (clone $base)->count(),
+            'rascunho'            => (clone $base)->where('status', Submission::ST_DRAFT)->count(),
+            'submetido'           => (clone $base)->where('status', Submission::ST_SUBMITTED)->count(),
+            'em_triagem'          => (clone $base)->where('status', Submission::ST_SCREEN)->count(),
+            'em_revisao'          => (clone $base)->where('status', Submission::ST_REVIEW)->count(),
+            'revisao_solicitada'  => (clone $base)->where('status', Submission::ST_REV_REQ)->count(),
+            'aceito'              => (clone $base)->where('status', Submission::ST_ACCEPTED)->count(),
+            'rejeitado'           => (clone $base)->where('status', Submission::ST_REJECTED)->count(),
+            'publicado'           => (clone $base)->where('status', Submission::ST_PUBLISHED)->count(),
         ];
 
-        // cole aqui os mesmos datasets que a view usa, se quiser:
-        $recentes = $base->latest()->limit(8)->get();
-        $rascunhos = $base->where('status','rascunho')->latest()->limit(3)->get();
-        $paraCorrigir = Submission::where('user_id',$uid)->where('status','revisao_solicitada')->latest()->limit(3)->get();
+        $rascunhos = (clone $base)
+            ->with($with)
+            ->where('status', Submission::ST_DRAFT)
+            ->latest('updated_at')
+            ->take(8)
+            ->get();
 
-        return view('autor.dashboard', compact('stats','recentes','rascunhos','paraCorrigir'));
+        $paraCorrigir = (clone $base)
+            ->with($with)
+            ->where('status', Submission::ST_REV_REQ)
+            ->latest('updated_at')
+            ->take(8)
+            ->get();
+
+        $recentes = (clone $base)
+            ->with($with)
+            ->orderByRaw("CASE status
+                WHEN 'rascunho' THEN 0
+                WHEN 'submetido' THEN 1
+                WHEN 'em_triagem' THEN 2
+                WHEN 'em_revisao' THEN 3
+                WHEN 'revisao_solicitada' THEN 4
+                WHEN 'aceito' THEN 5
+                WHEN 'publicado' THEN 6
+                ELSE 9 END")
+            ->orderByDesc('updated_at')
+            ->take(12)
+            ->get();
+
+        return view('autor.dashboard', compact('stats','rascunhos','paraCorrigir','recentes'));
     }
 }

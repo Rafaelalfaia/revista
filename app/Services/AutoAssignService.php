@@ -6,29 +6,32 @@ use App\Models\Submission;
 use App\Models\User;
 use App\Models\Review;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class AutoAssignService
 {
     public function assignByPrimaryCategory(Submission $sub, int $limit = 1): int
     {
-        $primaryCatId = $sub->categories()
-            ->wherePivot('is_primary', true)
-            ->value('categories.id');
+        $primaryCatId = $sub->categories()->wherePivot('is_primary', true)->value('categories.id');
 
-        if (!$primaryCatId) return 0;
+        if (!$primaryCatId) {
+            if (Schema::hasColumn('submissions','needs_reviewer')) {
+                $sub->needs_reviewer = true;
+                $sub->save();
+            }
+            return 0;
+        }
 
         $candidatos = User::role('Revisor')
             ->where('users.id', '<>', $sub->user_id)
             ->whereDoesntHave('roles', fn($q) => $q->whereIn('name', ['Admin','Coordenador']))
-            ->whereHas('expertiseCategories', fn($q) => $q->where('categories.id', $primaryCatId))
-
+            ->whereHas('expertise', fn($q) => $q->where('categories.id', $primaryCatId))
             ->whereNotExists(function ($q) use ($sub) {
                 $q->select(DB::raw(1))
                   ->from('reviews')
                   ->whereColumn('reviews.reviewer_id', 'users.id')
                   ->where('reviews.submission_id', $sub->id);
             })
-
             ->addSelect(['open_reviews_count' => function ($q) {
                 $q->selectRaw('COUNT(*)')
                   ->from('reviews')
@@ -40,7 +43,13 @@ class AutoAssignService
             ->limit($limit)
             ->get();
 
-        if ($candidatos->isEmpty()) return 0;
+        if ($candidatos->isEmpty()) {
+            if (Schema::hasColumn('submissions','needs_reviewer')) {
+                $sub->needs_reviewer = true;
+                $sub->save();
+            }
+            return 0;
+        }
 
         $count = 0;
 
@@ -53,9 +62,14 @@ class AutoAssignService
                 $count++;
             }
 
-            if ($count > 0 && $sub->status !== Submission::ST_REVIEW) {
-                $sub->status     = Submission::ST_REVIEW;   // em_revisao
-                $sub->triaged_at = $sub->triaged_at ?: now();
+            if ($count > 0) {
+                if (Schema::hasColumn('submissions','needs_reviewer')) {
+                    $sub->needs_reviewer = false;
+                }
+                if ($sub->status !== Submission::ST_REVIEW) {
+                    $sub->status = Submission::ST_REVIEW;
+                    $sub->triaged_at = $sub->triaged_at ?: now();
+                }
                 $sub->save();
             }
         });

@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/Coordenador/RevisorController.php
 
 namespace App\Http\Controllers\Coordenador;
 
@@ -22,7 +21,7 @@ class RevisorController extends Controller
         $q = trim($r->get('q',''));
 
         $revisores = User::role('Revisor')
-            ->where('created_by_id', $r->user()->id) // 👈 apenas os meus
+            ->where('created_by_id', $r->user()->id)
             ->when($q, fn($w) =>
                 $w->where(function($x) use ($q){
                     $x->where('name','ilike',"%{$q}%")
@@ -30,7 +29,7 @@ class RevisorController extends Controller
                       ->orWhere('cpf','ilike',"%{$q}%");
                 })
             )
-            ->with('categories:id,name') // para chips na lista
+            ->with('categories:id,name')
             ->orderBy('name')
             ->paginate(15)->withQueryString();
 
@@ -63,18 +62,18 @@ class RevisorController extends Controller
         $user->email         = $data['email'] ?? null;
         $user->cpf           = $data['cpf']   ?? null;
         $user->password      = Hash::make($data['password']);
-        $user->created_by_id = $r->user()->id;       // 👈 dono = coordenador
+        $user->created_by_id = $r->user()->id;
         $user->save();
 
         $user->syncRoles(['Revisor']);
-        $user->categories()->sync($data['categories'] ?? []); // 👈 áreas
+        $user->categories()->sync($data['categories'] ?? []);
 
         return redirect()->route('coordenador.revisores.index')->with('ok','Revisor criado com sucesso.');
     }
 
     public function edit(Request $r, User $user)
     {
-        // bloqueia editar revisor que não é meu
+
         if (!$user->hasRole('Revisor') || $user->created_by_id !== $r->user()->id) {
             return redirect()->route('coordenador.revisores.index')->with('err','Revisor não pertence a você.');
         }
@@ -113,8 +112,8 @@ class RevisorController extends Controller
         }
 
         $user->save();
-        $user->syncRoles(['Revisor']); // garante papel
-        $user->categories()->sync($data['categories'] ?? []); // atualiza áreas
+        $user->syncRoles(['Revisor']);
+        $user->categories()->sync($data['categories'] ?? []);
 
         return redirect()->route('coordenador.revisores.index')->with('ok','Revisor atualizado.');
     }

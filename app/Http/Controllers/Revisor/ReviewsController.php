@@ -13,10 +13,9 @@ class ReviewsController extends Controller
         $this->middleware(['permission:reviews.view_assigned']);
     }
 
-
     public function index(Request $r)
     {
-        $q      = trim((string) $r->query('q', ''));
+        $q = trim((string) $r->query('q', ''));
         $status = $r->query('status');
 
         $reviews = \App\Models\Review::with([
@@ -35,8 +34,7 @@ class ReviewsController extends Controller
             ->paginate(12)
             ->withQueryString();
 
-
-            $submissionIds = $reviews->pluck('submission_id')->all();
+        $submissionIds = $reviews->pluck('submission_id')->all();
         $blockingCounts = \App\Models\SubmissionComment::selectRaw('submission_id, COUNT(*) AS qtd')
             ->whereIn('submission_id', $submissionIds)
             ->where('level', 'must_fix')->where('status', 'open')
@@ -45,15 +43,14 @@ class ReviewsController extends Controller
 
         return view('revisor.reviews.index', [
             'reviews' => $reviews,
-            'q'       => $q,
-            'status'  => $status,
+            'q' => $q,
+            'status' => $status,
             'blockingCounts' => $blockingCounts,
         ]);
     }
 
     public function show(\App\Models\Review $review)
     {
-        // garante que é do próprio revisor
         abort_unless($review->reviewer_id === auth()->id() || auth()->user()->hasRole('Admin'), 403);
 
         $review->load([
@@ -68,32 +65,56 @@ class ReviewsController extends Controller
         return view('revisor.reviews.show', compact('review'));
     }
 
-
     public function submitOpinion(Request $r, Review $review)
     {
         $this->authorizeSelf($review);
 
         $data = $r->validate([
             'recommendation' => ['required','in:aprovar,rejeitar,revisar'],
-            'notes'          => ['nullable','string','max:5000'],
+            'notes' => ['nullable','string','max:5000'],
         ]);
 
-        $review->recommendation       = $data['recommendation'];
+        if ($data['recommendation'] === 'aprovar') {
+            $hasBlocking = $review->submission->comments()
+                ->where('level','must_fix')->where('status','open')->exists();
+            if ($hasBlocking) {
+                return back()->withErrors(['recommendation' => 'Há pendências bloqueantes (must_fix) abertas.'])->withInput();
+            }
+        }
+
+        $review->recommendation = $data['recommendation'];
+        $review->notes = $data['notes'] ?? null;
         $review->submitted_opinion_at = now();
-        $review->status               = 'parecer_enviado';
+        $review->status = 'parecer_enviado';
+
+        if ($data['recommendation'] === 'revisar') {
+            $review->submission->update(['status' => 'revisao_solicitada']);
+        } elseif ($data['recommendation'] === 'aprovar') {
+            $review->submission->update(['status' => 'aceito']);
+        } elseif ($data['recommendation'] === 'rejeitar') {
+            $review->submission->update(['status' => 'rejeitado']);
+        }
+
         $review->save();
 
+        $authorId = $review->submission->user_id;
+        $author = \App\Models\User::find($authorId);
+        if ($author) {
+            $author->notify(new \App\Notifications\SubmissionOpinionNotification(
+                submissionId: $review->submission->id,
+                submissionTitle: $review->submission->title,
+                kind: $data['recommendation'],
+                notes: $data['notes'] ?? null
+            ));
+        }
 
-        return redirect()
-            ->route('revisor.reviews.index')
-            ->with('ok', 'Parecer enviado.');
+        return redirect()->route('revisor.reviews.index')->with('ok', 'Parecer enviado.');
     }
+
+
 
     protected function authorizeSelf(Review $review): void
     {
-        abort_unless(
-            $review->reviewer_id === auth()->id() || auth()->user()->hasRole('Admin'),
-            403
-        );
+        abort_unless($review->reviewer_id === auth()->id() || auth()->user()->hasRole('Admin'), 403);
     }
 }

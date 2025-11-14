@@ -1,153 +1,265 @@
 @extends('console.layout-author')
 
 @section('title','Dashboard do Autor · Trivento')
-@section('page.title','Dashboard do Autor')
+@section('page.title','Meu painel')
 
-@section('content')
 @php
-  // Badge por status (cores Tailwind com fallback em dark)
-  $badge = function(string $s){
-    $map = [
-      'rascunho'            => 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
-      'submetido'           => 'bg-amber-500/10 text-amber-600 dark:text-amber-300',
-      'em_triagem'          => 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-300',
-      'em_revisao'          => 'bg-blue-500/10 text-blue-600 dark:text-blue-300',
-      'revisao_solicitada'  => 'bg-rose-500/10 text-rose-600 dark:text-rose-300',
-      'aceito'              => 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
-      'rejeitado'           => 'bg-red-500/10 text-red-600 dark:text-red-300',
-      'publicado'           => 'bg-emerald-600/15 text-emerald-600 dark:text-emerald-300',
-    ];
-    return $map[$s] ?? 'bg-slate-500/10 text-slate-600 dark:text-slate-300';
+  $me = auth()->user();
+  $normalizeStatus = function(?string $s){
+    return str_replace('_','-', $s ?? 'indefinido');
+  };
+  $labelStatus = function(?string $s){
+    return ucwords(str_replace('_',' ', $s ?? 'indefinido'));
   };
 @endphp
 
-{{-- Ações rápidas --}}
-<div class="flex items-center justify-between gap-2">
-  <h2 class="text-lg font-semibold">Bem-vindo(a)</h2>
-  <div class="flex items-center gap-2">
-    @if (Route::has('autor.submissions.create'))
-      <a href="{{ route('autor.submissions.create') }}"
-         class="inline-flex items-center rounded-lg px-3 py-2 text-sm text-white"
-         style="background:var(--brand)">+ Nova submissão</a>
-    @endif
-    @if (Route::has('autor.submissions.index'))
-      <a href="{{ route('autor.submissions.index') }}"
-         class="inline-flex items-center rounded-lg px-3 py-2 text-sm border panel">Minhas submissões</a>
-    @endif
-  </div>
-</div>
+@push('head')
+<style>
+  .shell-author{display:flex;flex-direction:column;gap:1rem}
+  .hero-card{border-radius:1.3rem;border:1px solid var(--line);overflow:hidden;background:radial-gradient(circle at top left,rgba(251,113,133,.15),transparent 55%),radial-gradient(circle at top right,rgba(59,130,246,.18),transparent 55%),var(--panel)}
+  .hero-inner{padding:.9rem 1rem 1.1rem;display:flex;align-items:flex-end;justify-content:space-between;gap:.75rem}
+  .hero-main{display:flex;flex-direction:column;gap:.25rem;min-width:0}
+  .hero-greeting{font-size:.8rem;color:var(--muted)}
+  .hero-name{font-size:1rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hero-sub{font-size:.75rem;color:var(--muted)}
+  .hero-actions{display:flex;flex-direction:row;flex-wrap:wrap;gap:.4rem;justify-content:flex-end}
+  .btn-primary{border-radius:.85rem;padding:.45rem .85rem;font-size:.8rem;font-weight:600;display:inline-flex;align-items:center;gap:.35rem;background:var(--brand);color:#fff;border:none;white-space:nowrap}
+  .btn-secondary{border-radius:.85rem;padding:.4rem .8rem;font-size:.8rem;font-weight:500;display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--line);background:var(--panel);white-space:nowrap}
+  .hero-metrics{margin-top:.7rem;padding:.55rem .9rem;border-top:1px solid rgba(148,163,184,.4);display:flex;gap:.75rem;font-size:.75rem}
+  .hero-metric{flex:1;min-width:0}
+  .hero-metric-label{color:var(--muted)}
+  .hero-metric-value{font-weight:600;font-size:.95rem}
+  .kpi-grid{display:grid;gap:.75rem}
+  @media(min-width:640px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(min-width:1024px){.kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  .kpi-card{border-radius:1rem;border:1px solid var(--line);background:var(--panel);padding:.75rem .9rem;display:grid;gap:.15rem}
+  .kpi-label{font-size:.75rem;color:var(--muted)}
+  .kpi-value{font-size:1.4rem;font-weight:600}
+  .kpi-chip{font-size:.7rem;border-radius:999px;padding:.1rem .6rem;background:var(--soft);border:1px solid var(--line);justify-self:flex-start}
+  .section-grid{display:grid;gap:.75rem}
+  @media(min-width:1024px){.section-grid{grid-template-columns:2fr 1.4fr}}
+  .card{border-radius:1rem;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column}
+  .card-header{padding:.75rem .9rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+  .card-title{font-size:.9rem;font-weight:600}
+  .card-sub{font-size:.75rem;color:var(--muted)}
+  .card-body{padding:.75rem .9rem}
+  .task-list{display:flex;flex-direction:column;gap:.5rem;font-size:.8rem}
+  .task-item{display:flex;align-items:center;justify-content:space-between;gap:.4rem}
+  .task-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pill-link{font-size:.75rem;border-radius:.9rem;padding:.25rem .6rem;border:1px solid var(--line);background:var(--panel-2);white-space:nowrap}
+  .card-stat-grid{display:flex;gap:.9rem}
+  .stat-block{flex:1;min-width:0}
+  .stat-label{font-size:.75rem;color:var(--muted)}
+  .stat-value{font-size:1.3rem;font-weight:600}
+  .stat-note{font-size:.7rem;color:var(--muted);margin-top:.1rem}
+  .submissions-card{margin-top:.5rem;border-radius:1.1rem;border:1px solid var(--line);background:var(--panel);overflow:hidden}
+  .submissions-header{padding:.75rem .9rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border-bottom:1px solid var(--line)}
+  .submissions-title{font-size:.9rem;font-weight:600}
+  .submissions-body{padding:.65rem .7rem}
+  .submission-list{display:flex;flex-direction:column;gap:.55rem}
+  .submission-card{border-radius:.85rem;border:1px solid var(--line);background:var(--panel-2);padding:.55rem .65rem;display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem}
+  .submission-main{flex:1;min-width:0}
+  .submission-title{font-size:.85rem;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .submission-meta{margin-top:.15rem;font-size:.7rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.35rem}
+  .submission-actions{display:flex;flex-direction:column;align-items:flex-end;gap:.3rem;flex-shrink:0}
+  .btn-small{border-radius:.7rem;padding:.25rem .6rem;font-size:.7rem;font-weight:500;display:inline-flex;align-items:center;gap:.25rem;border:1px solid var(--line);background:var(--panel)}
+  .status-pill{border-radius:999px;padding:.15rem .6rem;font-size:.7rem;font-weight:500;display:inline-flex;align-items:center;gap:.25rem;border:1px solid transparent;white-space:nowrap}
+  .status-pill.st-rascunho{background:rgba(148,163,184,.12);color:#475569;border-color:rgba(148,163,184,.4)}
+  .status-pill.st-submetido{background:rgba(59,130,246,.12);color:#1d4ed8;border-color:rgba(59,130,246,.35)}
+  .status-pill.st-em-triagem{background:rgba(234,179,8,.12);color:#854d0e;border-color:rgba(234,179,8,.4)}
+  .status-pill.st-em-revisao{background:rgba(59,130,246,.12);color:#1d4ed8;border-color:rgba(59,130,246,.4)}
+  .status-pill.st-revisao-solicitada{background:rgba(249,115,22,.12);color:#c2410c;border-color:rgba(249,115,22,.4)}
+  .status-pill.st-aceito{background:rgba(16,185,129,.14);color:#047857;border-color:rgba(16,185,129,.5)}
+  .status-pill.st-rejeitado{background:rgba(248,113,113,.12);color:#b91c1c;border-color:rgba(248,113,113,.45)}
+  .status-pill.st-publicado{background:rgba(37,99,235,.14);color:#1e3a8a;border-color:rgba(37,99,235,.5)}
+  .status-pill.st-indefinido{background:rgba(148,163,184,.12);color:#475569;border-color:rgba(148,163,184,.4)}
+  .empty{font-size:.8rem;color:var(--muted);text-align:center;padding:.4rem .3rem}
+  .badge-count{border-radius:999px;background:var(--soft);border:1px solid var(--line);padding:.1rem .6rem;font-size:.7rem}
+  @media(max-width:639.98px){
+    .hero-inner{align-items:flex-start}
+    .hero-actions{justify-content:flex-start}
+    .card-stat-grid{flex-direction:column}
+  }
+</style>
+@endpush
 
-{{-- KPIs --}}
-<div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-  <div class="rounded-xl panel border p-4">
-    <div class="text-sm muted">Total</div>
-    <div class="mt-1 text-2xl font-semibold">{{ $stats['total'] ?? 0 }}</div>
-  </div>
-  <div class="rounded-xl panel border p-4">
-    <div class="text-sm muted">Rascunhos</div>
-    <div class="mt-1 text-2xl font-semibold">{{ $stats['rascunho'] ?? 0 }}</div>
-  </div>
-  <div class="rounded-xl panel border p-4">
-    <div class="text-sm muted">Submetidas</div>
-    <div class="mt-1 text-2xl font-semibold">{{ $stats['submetido'] ?? 0 }}</div>
-  </div>
-  <div class="rounded-xl panel border p-4">
-    <div class="text-sm muted">Publicadas</div>
-    <div class="mt-1 text-2xl font-semibold">{{ $stats['publicado'] ?? 0 }}</div>
-  </div>
-</div>
-
-{{-- Painéis --}}
-<div class="mt-4 grid gap-3 lg:grid-cols-3">
-  <div class="rounded-xl panel border p-4">
-    <div class="text-sm font-medium">A fazer</div>
-    <ul class="mt-3 space-y-2 text-sm">
-      @forelse(($rascunhos ?? collect())->take(3) as $s)
-        <li class="flex items-center justify-between gap-2">
-          <span class="line-clamp-1">{{ $s->title }}</span>
-          <a class="hover:underline muted" href="{{ route('autor.submissions.wizard',$s) }}">Continuar</a>
-        </li>
-      @empty
-        <li class="muted">Sem rascunhos pendentes.</li>
-      @endforelse
-
-      @foreach(($paraCorrigir ?? collect())->take(3) as $s)
-        <li class="flex items-center justify-between gap-2">
-          <span class="line-clamp-1">{{ $s->title }}</span>
-          <a class="hover:underline muted" href="{{ route('autor.submissions.wizard',$s) }}">Enviar correções</a>
-        </li>
-      @endforeach
-    </ul>
-  </div>
-
-  <div class="rounded-xl panel border p-4">
-    <div class="text-sm font-medium">Em revisão</div>
-    <div class="mt-2 text-3xl font-semibold">{{ $stats['em_revisao'] ?? ($stats['revisao'] ?? 0) }}</div>
-    <p class="mt-1 text-sm muted">Aguarde os pareceres dos revisores.</p>
-  </div>
-
-  <div class="rounded-xl panel border p-4">
-    <div class="text-sm font-medium">Aceitas / Rejeitadas</div>
-    <div class="mt-2 flex items-center gap-6">
-      <div>
-        <div class="text-xs muted">Aceitas</div>
-        <div class="text-2xl font-semibold">{{ $stats['aceito'] ?? 0 }}</div>
+@section('content')
+<div class="shell-author">
+  <div class="hero-card">
+    <div class="hero-inner">
+      <div class="hero-main">
+        <div class="hero-greeting">Olá, {{ $me?->name ?? 'Autor(a)' }}</div>
+        <div class="hero-name">Seu espaço de autor na Trivento</div>
+        <div class="hero-sub">Acompanhe rascunhos, submissões e publicações em um só lugar.</div>
       </div>
-      <div>
-        <div class="text-xs muted">Rejeitadas</div>
-        <div class="text-2xl font-semibold">{{ $stats['rejeitado'] ?? 0 }}</div>
+      <div class="hero-actions">
+        @if (Route::has('autor.submissions.create'))
+          <a href="{{ route('autor.submissions.create') }}" class="btn-primary">
+            <span>Nova submissão</span>
+          </a>
+        @endif
+        @if (Route::has('autor.submissions.index'))
+          <a href="{{ route('autor.submissions.index') }}" class="btn-secondary">
+            <span>Minhas submissões</span>
+          </a>
+        @endif
       </div>
     </div>
-    <p class="mt-1 text-sm muted">Decisões finais do editor.</p>
+    <div class="hero-metrics">
+      <div class="hero-metric">
+        <div class="hero-metric-label">Total</div>
+        <div class="hero-metric-value">{{ $stats['total'] ?? 0 }}</div>
+      </div>
+      <div class="hero-metric">
+        <div class="hero-metric-label">Rascunhos</div>
+        <div class="hero-metric-value">{{ $stats['rascunho'] ?? 0 }}</div>
+      </div>
+      <div class="hero-metric">
+        <div class="hero-metric-label">Publicadas</div>
+        <div class="hero-metric-value">{{ $stats['publicado'] ?? 0 }}</div>
+      </div>
+    </div>
   </div>
-</div>
 
-{{-- Últimas submissões --}}
-<div class="mt-6 rounded-2xl panel border">
-  <div class="p-4 sm:p-5 flex items-center justify-between">
-    <div class="font-medium">Últimas submissões</div>
-    @if (Route::has('autor.submissions.index'))
-      <a href="{{ route('autor.submissions.index') }}" class="text-sm hover:underline muted">ver todas</a>
-    @endif
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Rascunhos em edição</div>
+      <div class="kpi-value">{{ $stats['rascunho'] ?? 0 }}</div>
+      <div class="kpi-chip">Artigos ainda não submetidos</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Submetidas</div>
+      <div class="kpi-value">{{ $stats['submetido'] ?? 0 }}</div>
+      <div class="kpi-chip">Aguardando triagem editorial</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Em revisão</div>
+      <div class="kpi-value">{{ $stats['em_revisao'] ?? ($stats['revisao'] ?? 0) }}</div>
+      <div class="kpi-chip">Sob análise dos revisores</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Publicadas</div>
+      <div class="kpi-value">{{ $stats['publicado'] ?? 0 }}</div>
+      <div class="kpi-chip">Já disponíveis na revista</div>
+    </div>
   </div>
 
-  <div class="px-4 sm:px-5 pb-4 overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead class="text-left muted">
-        <tr class="border-b" style="border-color:var(--line)">
-          <th class="py-2">Título</th>
-          <th class="py-2">Status</th>
-          <th class="py-2 hidden sm:table-cell">Criada</th>
-          <th class="py-2">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        @forelse(($recentes ?? collect()) as $s)
-          <tr class="border-b last:border-0" style="border-color:var(--line)">
-            <td class="py-2 pr-3">
-              <div class="line-clamp-1 font-medium">{{ $s->title }}</div>
-            </td>
-            <td class="py-2 pr-3">
-              <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs {{ $badge($s->status) }}">
-                {{ str_replace('_',' ', $s->status) }}
-              </span>
-            </td>
-            <td class="py-2 pr-3 hidden sm:table-cell">
-              <span class="muted">{{ $s->created_at?->format('d/m/Y H:i') }}</span>
-            </td>
-            <td class="py-2">
-              @if(in_array($s->status, ['rascunho','revisao_solicitada']))
-                <a href="{{ route('autor.submissions.wizard',$s) }}" class="hover:underline muted">Editar</a>
-              @else
-                <a href="{{ route('autor.submissions.wizard',$s) }}" class="hover:underline muted">Ver</a>
-              @endif
-            </td>
-          </tr>
-        @empty
-          <tr><td class="py-6 muted" colspan="4">Nada por aqui ainda.</td></tr>
-        @endforelse
-      </tbody>
-    </table>
+  <div class="section-grid">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">A fazer</div>
+          <div class="card-sub">Rascunhos e correções pendentes.</div>
+        </div>
+        @php
+          $countRasc = ($rascunhos ?? collect())->count();
+          $countCorr = ($paraCorrigir ?? collect())->count();
+          $totalPend = $countRasc + $countCorr;
+        @endphp
+        <span class="badge-count">{{ $totalPend }} pendente{{ $totalPend === 1 ? '' : 's' }}</span>
+      </div>
+      <div class="card-body">
+        <div class="task-list">
+          @forelse(($rascunhos ?? collect())->take(3) as $s)
+            <div class="task-item">
+              <span class="task-title">{{ $s->title }}</span>
+              <a href="{{ route('autor.submissions.wizard',$s) }}" class="pill-link">Continuar</a>
+            </div>
+          @empty
+            <div class="empty">Sem rascunhos pendentes.</div>
+          @endforelse
+
+          @foreach(($paraCorrigir ?? collect())->take(3) as $s)
+            <div class="task-item">
+              <span class="task-title">{{ $s->title }}</span>
+              <a href="{{ route('autor.submissions.wizard',$s) }}" class="pill-link">Enviar correções</a>
+            </div>
+          @endforeach
+
+          @if(($rascunhos ?? collect())->count() + ($paraCorrigir ?? collect())->count() > 3)
+            <div class="empty">Há mais itens na lista em “Minhas submissões”.</div>
+          @endif
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Andamento</div>
+          <div class="card-sub">Visão rápida das decisões editoriais.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-stat-grid">
+          <div class="stat-block">
+            <div class="stat-label">Em revisão</div>
+            <div class="stat-value">{{ $stats['em_revisao'] ?? ($stats['revisao'] ?? 0) }}</div>
+            <div class="stat-note">Aguardando pareceres.</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-label">Aceitas</div>
+            <div class="stat-value">{{ $stats['aceito'] ?? 0 }}</div>
+            <div class="stat-note">Aprovadas para publicação.</div>
+          </div>
+        </div>
+        <div class="card-stat-grid" style="margin-top:.6rem">
+          <div class="stat-block">
+            <div class="stat-label">Rejeitadas</div>
+            <div class="stat-value">{{ $stats['rejeitado'] ?? 0 }}</div>
+            <div class="stat-note">Não seguiram no fluxo.</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-label">Correções solicitadas</div>
+            <div class="stat-value">{{ $stats['revisao_solicitada'] ?? 0 }}</div>
+            <div class="stat-note">Aguardando nova versão.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="submissions-card">
+    <div class="submissions-header">
+      <div>
+        <div class="submissions-title">Últimas submissões</div>
+        <div class="card-sub">Histórico recente das suas submissões.</div>
+      </div>
+      @if (Route::has('autor.submissions.index'))
+        <a href="{{ route('autor.submissions.index') }}" class="btn-small">Ver todas</a>
+      @endif
+    </div>
+    <div class="submissions-body">
+      @php $listaRecentes = $recentes ?? collect(); @endphp
+      @if($listaRecentes->isEmpty())
+        <div class="empty">Nada por aqui ainda. Comece criando uma nova submissão.</div>
+      @else
+        <div class="submission-list">
+          @foreach($listaRecentes as $s)
+            @php
+              $statusKey = $normalizeStatus($s->status);
+              $statusLabel = $labelStatus($s->status);
+              $created = $s->created_at?->format('d/m/Y H:i');
+              $isEditable = in_array($s->status, ['rascunho','revisao_solicitada']);
+            @endphp
+            <div class="submission-card">
+              <div class="submission-main">
+                <div class="submission-title">{{ $s->title }}</div>
+
+              </div>
+              <div class="submission-actions">
+                <span class="status-pill st-{{ $statusKey }}">{{ $statusLabel }}</span>
+                @if($isEditable)
+                  <a href="{{ route('autor.submissions.wizard',$s) }}" class="btn-small">Editar</a>
+                @else
+                  <a href="{{ route('autor.submissions.wizard',$s) }}" class="btn-small">Ver detalhes</a>
+                @endif
+              </div>
+            </div>
+          @endforeach
+        </div>
+      @endif
+    </div>
   </div>
 </div>
 @endsection

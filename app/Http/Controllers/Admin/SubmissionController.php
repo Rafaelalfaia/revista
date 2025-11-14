@@ -55,11 +55,24 @@ class SubmissionController extends Controller
         ));
     }
 
-    public function show(Submission $submission)
+    public function show(\Illuminate\Http\Request $r, \App\Models\Submission $submission)
     {
-        $submission->load(['author','files','categories']);
-        return view('admin.submissions.show', compact('submission'));
+        $submission->load([
+            'user:id,name,email',
+            'sections' => fn($q) => $q->orderBy('position'),
+            'sections.children' => fn($q) => $q->orderBy('position'),
+            'reviews' => fn($q) => $q->select('id','submission_id','reviewer_id','submitted_opinion_at','recommendation')
+                                    ->whereNotNull('submitted_opinion_at')
+                                    ->with(['reviewer:id,name']),
+        ]);
+
+        $roots = $submission->sections->whereNull('parent_id')->values();
+        $reviewers = $submission->reviews->pluck('reviewer.name')->filter()->unique()->values()->all();
+
+        return view('admin.submissions.show', compact('submission','roots','reviewers'));
     }
+
+
 
     public function transition(Request $request, Submission $submission)
     {

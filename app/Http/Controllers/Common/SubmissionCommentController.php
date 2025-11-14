@@ -8,123 +8,164 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use App\Models\Submission;
 use App\Models\SubmissionComment;
+use App\Models\SubmissionSection;
+use Illuminate\Support\Facades\DB;
 
 class SubmissionCommentController extends Controller
 {
-
-    public function index(Request $r, Submission $submission)
+   public function index(Request $r, \App\Models\Submission $submission)
     {
-        // Permitir: Admin, autor da submissão ou revisor ATRIBUÍDO
         $u = $r->user();
-        $isAdmin  = $u->hasRole('Admin');
-        $isAuthor = (int)$submission->user_id === (int)$u->id;
-        $isAssignedReviewer = $submission->reviews()
-            ->where('reviewer_id', $u->id)
-            ->exists();
 
-        abort_unless($isAdmin || $isAuthor || $isAssignedReviewer, 403);
+        $q = $submission->comments()
+            ->with(['user:id,name','section:id,submission_id,title'])
+            ->orderByRaw("CASE status WHEN 'open' THEN 0 WHEN 'applied' THEN 1 WHEN 'accepted' THEN 2 ELSE 9 END")
+            ->orderByDesc('created_at');
 
-        // Se o usuário for revisor, buscamos o review vinculado (para habilitar "verificar/fechar")
-        $review = null;
-        if ($isAssignedReviewer) {
-            $review = $submission->reviews()
-                ->where('reviewer_id', $u->id)
-                ->latest('assigned_at')
-                ->first();
+        if ($u->id === $submission->user_id && \Illuminate\Support\Facades\Schema::hasColumn('submission_comments','audience')) {
+            $q->whereIn('audience', ['author','both']);
         }
 
-        // Carregue o mínimo necessário (seções para o data-section-id etc, se você usar)
-        $submission->load([
-            'rootSections:id,submission_id,title,position',
-            // carregue outras relações que seu layout use
-        ]);
+        $comments = $q->paginate(20)->withQueryString();
 
-        return view('submissions.comments', compact('submission','review'));
+        $reviews = $submission->reviews()
+            ->with('reviewer:id,name')
+            ->where('status','parecer_enviado')
+            ->latest('submitted_opinion_at')
+            ->get();
+
+        $layout = $u->hasRole('Autor') ? 'console.layout-author' : 'console.layout';
+
+        return view('submissions.comments', compact('submission','comments','reviews','layout'));
     }
-
-    public function store(Request $r, Submission $submission)
+   public function store(Request $r, Submission $submission)
     {
         $this->authorize('create', [SubmissionComment::class, $submission]);
 
         $data = $r->validate([
             'section_id'     => ['nullable','integer','exists:submission_sections,id'],
             'parent_id'      => ['nullable','integer','exists:submission_comments,id'],
-            'type'           => ['required','in:suggestion,comment,question'],
             'level'          => ['required','in:must_fix,should_fix,nit'],
             'excerpt'        => ['nullable','string','max:10000'],
-            'suggested_text' => ['nullable','string'],
+            'suggested_text' => ['nullable','string','max:10000'],
         ]);
 
-        // Colunas reais da tabela
-        $cols   = Schema::getColumnListing('submission_comments');
-        $colset = array_flip($cols); // para lookup O(1)
-
-        // Campo de autor: user_id (preferível) ou author_id (legado)
-        $authorKey = isset($colset['user_id'])
-            ? 'user_id'
-            : (isset($colset['author_id']) ? 'author_id' : null);
-
-        // Valores base
-        $excerptValue = trim((string)($data['excerpt'] ?? ''));
-        $noteValue    = trim((string)($data['suggested_text'] ?? ''));
-
-        // Se não houve seleção de trecho, derive do texto do comentário
-        if ($excerptValue === '') {
-            $excerptValue = \Illuminate\Support\Str::limit(
-                $noteValue !== '' ? $noteValue : 'Trecho não informado', 300, '…'
-            );
-        }
-        // Se não houve texto do comentário, garanta algo em 'note' (para NOT NULL)
-        if ($noteValue === '') {
-            $noteValue = $excerptValue ?: 'Sem observações';
+        $sectionId = $data['section_id'] ?? null;
+        if ($sectionId && !$submission->sections()->whereKey($sectionId)->exists()) {
+            return back()->withErrors(['section_id' => 'Seção inválida para esta submissão.'])->withInput();
         }
 
-        // Monta payload “super-set”
-        $payload = [
+        $parentId = $data['parent_id'] ?? null;
+        if ($parentId && !SubmissionComment::where('id',$parentId)->where('submission_id',$submission->id)->exists()) {
+            return back()->withErrors(['parent_id' => 'Comentário pai inválido para esta submissão.'])->withInput();
+        }
+
+        $excerpt = trim((string)($data['excerpt'] ?? ''));
+        $note    = trim((string)($data['suggested_text'] ?? ''));
+
+        if ($excerpt === '' && $note !== '') $excerpt = \Illuminate\Support\Str::limit($note, 300, '…');
+        if ($note === '' && $excerpt !== '') $note = $excerpt;
+        if ($note === '' && $excerpt === '') $note = 'Sem observações';
+
+        $c = new SubmissionComment([
             'submission_id'  => $submission->id,
-            'section_id'     => $data['section_id']     ?? null,
-            'parent_id'      => $data['parent_id']      ?? null,
-            'type'           => $data['type']           ?? null, // só será enviado se existir a coluna
-            'level'          => $data['level']          ?? null,
+            'section_id'     => $sectionId,
+            'parent_id'      => $parentId,
+            'level'          => $data['level'],
             'status'         => 'open',
+            'excerpt'        => $excerpt ?: null,
+            'suggested_text' => $note ?: null,
+            'body'           => $note ?: null,
+        ]);
 
-            // Texto do comentário: preenche ambos se existirem
-            'note'           => $noteValue,
-            'suggested_text' => $noteValue,
+        if (\Illuminate\Support\Facades\Schema::hasColumn('submission_comments','user_id'))   $c->user_id   = $r->user()->id;
+        if (\Illuminate\Support\Facades\Schema::hasColumn('submission_comments','author_id')) $c->author_id = $submission->user_id;
+        if (\Illuminate\Support\Facades\Schema::hasColumn('submission_comments','audience'))  $c->audience  = 'author';
 
-            // Trecho selecionado: preenche ambos se existirem
-            'quote'          => $excerptValue,
-            'excerpt'        => $excerptValue,
-        ];
-
-        if ($authorKey) {
-            $payload[$authorKey] = $r->user()->id;
-        }
-
-        // 🔒 Filtra para enviar SOMENTE colunas que existem nesta base
-        $payload = array_intersect_key($payload, $colset);
-
-        SubmissionComment::create($payload);
+        $c->save();
 
         if (method_exists($submission, 'recomputeStatus')) {
             $submission->recomputeStatus();
         }
 
-        return back()->with('ok','Comentário/sugestão registrado.');
+        return back()->with('ok','Correção/comentário adicionado.');
     }
+
+
+
+    public function applySuggestion(Request $r, Submission $submission, SubmissionComment $comment)
+    {
+        $u = $r->user();
+        abort_unless($u->id === $submission->user_id || $u->hasRole('Admin'), 403);
+
+        if (!$comment->section_id || !$comment->suggested_text) {
+            return back()->withErrors(['comment' => 'Este comentário não possui sugestão aplicável.']);
+        }
+
+        $section = $submission->sections()->whereKey($comment->section_id)->firstOrFail();
+        $old     = (string)($section->content ?? '');
+        $excerpt = trim((string)($comment->excerpt ?? ''));
+        $suggest = (string)$comment->suggested_text;
+
+        $replaced = null;
+        if ($excerpt !== '') {
+            $norm   = preg_replace('/\s+/u',' ', $excerpt);
+            $parts  = preg_split('/\s+/u', $norm, -1, PREG_SPLIT_NO_EMPTY);
+            $regex  = '/'.implode('(?:\s|<[^>]+>)*', array_map(fn($w)=>preg_quote($w,'/'), $parts)).'/iu';
+            $replaced = preg_replace($regex, $suggest, $old, 1);
+        }
+
+        if ($replaced !== null && $replaced !== $old) {
+            $section->content = $replaced;
+        } else {
+            $section->content = trim($old."\n\n".$suggest);
+        }
+
+        $historyId = null;
+        if (Schema::hasTable('submission_section_histories')) {
+            $historyId = DB::table('submission_section_histories')->insertGetId([
+                'submission_id' => $submission->id,
+                'section_id'    => $section->id,
+                'edited_by'     => $u->id,
+                'old_content'   => $old,
+                'new_content'   => null,
+                'created_at'    => now(),
+                'updated_at'    => now(),
+            ]);
+        }
+
+        $section->save();
+
+        if ($historyId) {
+            DB::table('submission_section_histories')->where('id', $historyId)->update([
+                'new_content' => $section->content,
+                'updated_at'  => now(),
+            ]);
+        }
+
+        $updates = ['status' => 'applied'];
+        if (Schema::hasColumn('submission_comments','resolved_by_author_at')) $updates['resolved_by_author_at'] = now();
+        if (Schema::hasColumn('submission_comments','resolved_at'))           $updates['resolved_at']           = now();
+        $comment->update($updates);
+
+        $submission->recomputeStatus();
+
+        return back()->with('ok', 'Sugestão aplicada na seção.');
+    }
+
 
 
     public function destroy(Request $r, Submission $submission, SubmissionComment $comment)
     {
         $u = $r->user();
 
-        $isAdmin  = $u->hasRole('Admin');
-        $isRev    = $submission->reviews()->where('reviewer_id', $u->id)->exists();
+        $isAdmin = $u->hasRole('Admin');
+        $isRev = $submission->reviews()->where('reviewer_id', $u->id)->exists();
 
         $isAuthorComment = false;
-        if (\Schema::hasColumn('submission_comments','user_id')) {
+        if (Schema::hasColumn('submission_comments','user_id')) {
             $isAuthorComment = (int)($comment->user_id ?? 0) === (int)$u->id;
-        } elseif (\Schema::hasColumn('submission_comments','author_id')) {
+        } elseif (Schema::hasColumn('submission_comments','author_id')) {
             $isAuthorComment = (int)($comment->author_id ?? 0) === (int)$u->id;
         }
 
@@ -135,20 +176,51 @@ class SubmissionCommentController extends Controller
         return back()->with('ok','Comentário removido.');
     }
 
-
-    public function authorResolved(Request $r, Submission $submission, SubmissionComment $comment)
+    public function authorResolved(Request $r, \App\Models\Submission $submission, \App\Models\SubmissionComment $comment)
     {
-        $this->authorize('resolveAsAuthor', [$comment, $submission]);
 
-        if ((int)$comment->submission_id !== (int)$submission->id) abort(404);
-        if ($comment->status !== 'open') return back()->with('error','Este comentário não está aberto.');
+        abort_unless($submission->id === $comment->submission_id, 404);
+        abort_unless($submission->user_id === $r->user()->id, 403);
 
-        if (Schema::hasColumn('submission_comments', 'resolved_by_author_at')) {
-            $comment->update(['resolved_by_author_at' => now()]);
+
+        $comment->status = 'applied';
+        if (Schema::hasColumn('submission_comments','closed_by')) {
+            $comment->closed_by = 'author';
+        }
+        if (Schema::hasColumn('submission_comments','closed_at')) {
+            $comment->closed_at = now();
+        }
+        $comment->save();
+
+        // Opcional: reprocessar status da submissão se tiver esse método
+        if (method_exists($submission, 'recomputeStatus')) {
+            $submission->recomputeStatus();
         }
 
-        return back()->with('ok','Marcado como resolvido pelo autor (aguardando verificação do revisor).');
+        return back()->with('ok','Comentário marcado como resolvido.');
     }
+
+    public function reopen(Request $r, Submission $submission, SubmissionComment $comment)
+    {
+        $user = $r->user();
+        abort_unless($user->hasAnyRole(['Revisor','Admin','Coordenador']), 403);
+        abort_unless($submission->id === $comment->submission_id, 404);
+
+        if ((int)$comment->resolver_id === (int)$submission->user_id) {
+            return back()->with('error', 'Correção enviada pelo autor não pode ser reaberta. Crie uma nova correção.');
+        }
+
+        if (property_exists($comment, 'status')) {
+            $comment->status = 'open';
+        }
+        $comment->resolver_id = null;
+        $comment->resolved_at = null;
+        $comment->save();
+
+        return back()->with('ok', 'Comentário reaberto.');
+    }
+
+
 
     public function verify(Request $r, Submission $submission, SubmissionComment $comment)
     {
@@ -161,14 +233,14 @@ class SubmissionCommentController extends Controller
         if ($action === 'accept') {
             $updates = ['status' => 'applied'];
             if (Schema::hasColumn('submission_comments','verified_by_reviewer_at')) $updates['verified_by_reviewer_at'] = now();
-            if (Schema::hasColumn('submission_comments','resolved_at'))            $updates['resolved_at'] = now();
-            if (Schema::hasColumn('submission_comments','resolver_id'))            $updates['resolver_id'] = $r->user()->id;
+            if (Schema::hasColumn('submission_comments','resolved_at')) $updates['resolved_at'] = now();
+            if (Schema::hasColumn('submission_comments','resolver_id')) $updates['resolver_id'] = $r->user()->id;
             $comment->update($updates);
         } else {
             $updates = ['status' => 'open'];
             if (Schema::hasColumn('submission_comments','verified_by_reviewer_at')) $updates['verified_by_reviewer_at'] = null;
-            if (Schema::hasColumn('submission_comments','resolved_at'))            $updates['resolved_at'] = null;
-            if (Schema::hasColumn('submission_comments','resolved_by_author_at'))  $updates['resolved_by_author_at'] = null;
+            if (Schema::hasColumn('submission_comments','resolved_at')) $updates['resolved_at'] = null;
+            if (Schema::hasColumn('submission_comments','resolved_by_author_at')) $updates['resolved_by_author_at'] = null;
             $comment->update($updates);
         }
 

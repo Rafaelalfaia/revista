@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Category extends Model
 {
@@ -29,5 +30,10 @@ class Category extends Model
     public function getIconUrlAttribute(): ?string
     {
         return $this->icon_path ? Storage::disk('public')->url($this->icon_path) : null;
+    }
+
+    public function reviewers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'reviewer_categories', 'category_id', 'reviewer_id')->withTimestamps();
     }
 }

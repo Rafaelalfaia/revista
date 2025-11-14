@@ -1,12 +1,13 @@
 @extends('console.layout')
-@section('title','Novo Revisor')
-@section('page.title','Novo Revisor')
+
+@section('title','Novo revisor')
+@section('page.title','Novo revisor')
 
 @section('content')
   @include('coordenador.revisores._form', [
-    'action' => route('coordenador.revisores.store'),
-    'method' => 'POST',
-    'user'   => null,
+    'action'     => route('coordenador.revisores.store'),
+    'method'     => 'POST',
+    'user'       => null,
     'categories' => $categories,
     'selected'   => [],
   ])
