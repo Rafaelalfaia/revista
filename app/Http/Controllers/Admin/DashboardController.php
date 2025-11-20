@@ -47,10 +47,10 @@ class DashboardController extends Controller
 
         $monthly = $hasSubmissions ? Cache::remember($ck('monthly'), 300, function() use ($from,$to) {
             return DB::table('submissions')
-                ->selectRaw("date_trunc('month', created_at) as m, count(*) as n")
+                ->selectRaw("strftime('%Y-%m', created_at) as m, count(*) as n")
                 ->whereBetween('created_at', [$from,$to])
-                ->groupBy(DB::raw("date_trunc('month', created_at)"))
-                ->orderBy(DB::raw("date_trunc('month', created_at)"))
+                ->groupBy(DB::raw("strftime('%Y-%m', created_at)"))
+                ->orderBy(DB::raw("strftime('%Y-%m', created_at)"))
                 ->get();
         }) : collect();
 
