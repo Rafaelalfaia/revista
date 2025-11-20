@@ -40,7 +40,18 @@ class GoogleController extends Controller
 
             Auth::login($user);
 
-            return redirect()->intended('/dashboard');
+            // Redirect based on role
+            if ($user->hasRole('Admin')) {
+                return redirect()->intended(route('admin.dashboard', absolute: false));
+            } elseif ($user->hasRole('Coordenador')) {
+                return redirect()->intended(route('coordenador.dashboard', absolute: false));
+            } elseif ($user->hasRole('Revisor')) {
+                return redirect()->intended(route('revisor.dashboard', absolute: false));
+            } elseif ($user->hasRole('Autor')) {
+                return redirect()->intended(route('autor.dashboard', absolute: false));
+            }
+
+            return redirect()->intended(route('dashboard', absolute: false));
         } catch (\Exception $e) {
             return redirect('/login')->withErrors(['google' => 'Erro ao fazer login com Google.']);
         }
