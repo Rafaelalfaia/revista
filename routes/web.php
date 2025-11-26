@@ -1,6 +1,14 @@
 <?php
 
+
 use Illuminate\Support\Facades\Route;
+
+// Outras rotas já existentes
+
+Route::get('/desenvolvedores', [DeveloperController::class, 'index'])->name('desenvolvedores');
+
+use App\Http\Controllers\DeveloperController;
+
 use App\Http\Controllers\ProfileController;
 
 // Dashboards
@@ -32,8 +40,11 @@ use App\Http\Controllers\Autor\DashboardController as AutorDash;
 use App\Http\Controllers\Revisor\ReviewsController as RevisorReviews;
 use App\Http\Controllers\Common\SubmissionCommentController as CommentCtrl;
 
+    
 //Público
 Route::get('/', fn () => view('welcome'));
+Route::get('/desenvolvedores', [\App\Http\Controllers\DeveloperController::class, 'index'])->name('desenvolvedores');
+
 
 
 
