@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DeveloperController;
 use App\Http\Controllers\ProfileController;
 
 // Dashboards
@@ -29,53 +30,45 @@ use App\Http\Controllers\Autor\NotificationController;
 // Comum
 use App\Http\Controllers\Revisor\ReviewsController as RevisorReviews;
 use App\Http\Controllers\Common\SubmissionCommentController as CommentCtrl;
-
-// Callblade + Favoritos + Estatísticas
 use App\Http\Controllers\Common\FavoriteController;
 use App\Http\Controllers\Common\StatsController;
 use App\Http\Controllers\Common\CallController;
 
-// >>> CONTROLLERS DA HOME PAGE E ARTIGO
+// Home page e artigos
 use App\Http\Controllers\HomeController;
-use App\Http\Controllers\ArtigoController; // 🚀 NOVO IMPORT: ArtigoController
+use App\Http\Controllers\ArtigoController;
 
 /*
 |--------------------------------------------------------------------------
-| Rotas Públicas – Cabeçalho da Home
+| Rotas Públicas
 |--------------------------------------------------------------------------
 */
 
-// FORMULÁRIO PARA CRIAR ARTIGO
+Route::get('/desenvolvedores', [DeveloperController::class, 'index'])->name('desenvolvedores');
+
+// Formulário de criação de artigos
 Route::get('/artigos/create', [ArtigoController::class, 'create'])->name('artigos.create');
 
-
-// SALVAR ARTIGO NO BANCO
+// Salvar artigo
 Route::post('/artigos', [ArtigoController::class, 'store'])->name('artigos.store');
 
+// Home
+Route::get('/', [HomeController::class, 'index'])->name('inicio');
 
-// ROTA ATUALIZADA: Chama o HomeController para buscar e passar os dados
-Route::get('/', [HomeController::class, 'index'])->name('inicio'); 
+// Página de artigo específico
+Route::get('/artigo/{id}', [ArtigoController::class, 'show'])->name('artigo.show');
 
-// 🚀 NOVA ROTA: Exibir detalhes de um artigo
-// Note que usamos {id} para capturar o ID do artigo
-Route::get('/artigo/{id}', [ArtigoController::class, 'show'])->name('artigo.show'); 
-
-
+// Páginas estáticas
 Route::get('/edicao-atual', fn () => view('edicao-atual'))->name('edicao.atual');
 Route::get('/edicoes', fn () => view('edicoes'))->name('edicoes');
-
 Route::get('/artigos', [ArtigoController::class, 'index'])->name('artigos.index');
 Route::get('/autores', fn () => view('autores'))->name('autores');
 Route::get('/categorias', fn () => view('categorias'))->name('categorias');
 Route::get('/diretrizes', fn () => view('diretrizes'))->name('diretrizes');
-
 Route::get('/conselho-editorial', fn () => view('conselho-editorial'))->name('conselho.editorial');
-
 Route::get('/sobre', fn () => view('sobre'))->name('sobre');
-
 Route::get('/submissao', fn () => view('submissao'))->name('submissao');
 Route::get('/submeter-projeto', fn () => view('submissao'))->name('submeter.projeto');
-
 
 /*
 |--------------------------------------------------------------------------
@@ -97,21 +90,17 @@ Route::get('/dashboard', function () {
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 
-
 /*
 |--------------------------------------------------------------------------
 | Perfil
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth')->group(function () {
-
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
     Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar');
-
 });
-
 
 /*
 |--------------------------------------------------------------------------
@@ -182,7 +171,6 @@ Route::middleware(['auth', 'verified', 'role:Admin'])
 
     });
 
-
 /*
 |--------------------------------------------------------------------------
 | Coordenador
@@ -207,7 +195,6 @@ Route::middleware(['auth', 'verified', 'role:Coordenador|Admin'])
         Route::get('relatorios/revisores/{reviewer}', [RelatorioRevisoresController::class, 'show'])
             ->name('relatorios.revisores.show');
     });
-
 
 /*
 |--------------------------------------------------------------------------
@@ -243,7 +230,6 @@ Route::middleware(['auth', 'verified'])->scopeBindings()->group(function () {
     Route::get('/call/{submission:slug}', [CallController::class, 'index'])->name('call.index');
 });
 
-
 /*
 |--------------------------------------------------------------------------
 | Revisor
@@ -258,7 +244,6 @@ Route::middleware(['auth', 'verified', 'role:Revisor|Admin'])
         Route::get('/revisoes/{review}', [RevisorReviews::class, 'show'])->name('reviews.show');
         Route::post('/revisoes/{review}/opinar', [RevisorReviews::class, 'submitOpinion'])->name('reviews.submitOpinion');
     });
-
 
 /*
 |--------------------------------------------------------------------------
@@ -301,7 +286,7 @@ Route::middleware(['auth', 'verified'])
             Route::patch('/submissoes/{submission:slug}/update-after-submit', [AutorSubmission::class, 'updateAfterSubmit'])->name('submissoes.updateAfterSubmit');
         });
 
-        // Notifications
+        // Notificações
         Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
         Route::get('/notifications/{notification}', [NotificationController::class, 'show'])->name('notifications.show');
         Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');

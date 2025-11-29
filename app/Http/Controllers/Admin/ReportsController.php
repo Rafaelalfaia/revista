@@ -128,11 +128,11 @@ class ReportsController extends Controller
 
     private function submissionsPerMonth($from,$to,$f){
         return Cache::remember($this->cacheKey('subm_month',$from,$to,$f), 300, function() use($from,$to,$f){
-            return Submission::selectRaw("date_trunc('month', created_at) AS m, count(*) as n")
+            return Submission::selectRaw("strftime('%Y-%m', created_at) AS m, count(*) as n")
                 ->when($f['category_id'], fn($q)=>$q->whereHas('categories', fn($c)=>$c->where('categories.id',$f['category_id'])))
                 ->whereBetween('created_at',[$from,$to])
-                ->groupBy(DB::raw("date_trunc('month', created_at)"))
-                ->orderBy(DB::raw("date_trunc('month', created_at)"))
+                ->groupBy(DB::raw("strftime('%Y-%m', created_at)"))
+                ->orderBy(DB::raw("strftime('%Y-%m', created_at)"))
                 ->get();
         });
     }
