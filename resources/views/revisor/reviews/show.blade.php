@@ -73,9 +73,12 @@
     font-weight:600;
     margin-bottom:.35rem;
   }
-  .rev-sec-body{
+    .rev-sec-body{
     font-size:.9rem;
     line-height:1.7;
+
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .rev-gallery{

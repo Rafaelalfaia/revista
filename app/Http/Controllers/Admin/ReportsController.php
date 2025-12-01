@@ -126,16 +126,29 @@ class ReportsController extends Controller
         });
     }
 
-    private function submissionsPerMonth($from,$to,$f){
+   private function submissionsPerMonth($from,$to,$f){
         return Cache::remember($this->cacheKey('subm_month',$from,$to,$f), 300, function() use($from,$to,$f){
-            return Submission::selectRaw("strftime('%Y-%m', created_at) AS m, count(*) as n")
+            $driver = DB::connection()->getDriverName();
+
+            if ($driver === 'pgsql') {
+                $monthExpr = "to_char(created_at, 'YYYY-MM')";
+            } elseif ($driver === 'mysql') {
+
+                $monthExpr = "DATE_FORMAT(created_at, '%Y-%m')";
+            } else {
+
+                $monthExpr = "strftime('%Y-%m', created_at)";
+            }
+
+            return Submission::selectRaw("$monthExpr AS m, count(*) as n")
                 ->when($f['category_id'], fn($q)=>$q->whereHas('categories', fn($c)=>$c->where('categories.id',$f['category_id'])))
                 ->whereBetween('created_at',[$from,$to])
-                ->groupBy(DB::raw("strftime('%Y-%m', created_at)"))
-                ->orderBy(DB::raw("strftime('%Y-%m', created_at)"))
+                ->groupBy(DB::raw($monthExpr))
+                ->orderBy(DB::raw($monthExpr))
                 ->get();
         });
     }
+
 
     private function overdueReviews($from,$to,$f,$limit=10){
         return Cache::remember($this->cacheKey('overdue',$from,$to,$f), 300, function() use($from,$to,$f,$limit){

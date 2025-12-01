@@ -68,54 +68,76 @@ class EditionSubmissionController extends Controller
 
 
     public function store(Request $r, Edition $edition)
-    {
-        $data = $r->validate([
-            'submission_id' => ['required','integer','exists:submissions,id']
-        ]);
+{
+    $data = $r->validate([
+        'submission_id' => ['required','integer','exists:submissions,id'],
+        'featured'      => ['nullable','boolean'],
+    ]);
 
-        $sid = (int) $data['submission_id'];
+    $sid      = (int) $data['submission_id'];
+    $featured = !empty($data['featured']); // 1/0 -> bool
 
-        $exists = $edition->submissions()->where('submissions.id',$sid)->exists();
-        if ($exists) {
-            return back()->with('warn','Já está na edição.');
-        }
-
-        $isEligible = Submission::query()
-            ->where('id',$sid)
-            ->where(function($w){
-                $w->where('status','aceito')
-                 ->orWhereExists(function($sub){
-                    $sub->select(DB::raw(1))
-                        ->from('reviews')
-                        ->whereColumn('reviews.submission_id','submissions.id')
-                        ->whereNotNull('submitted_opinion_at')
-                        ->whereIn(DB::raw('lower(recommendation)'), [
-                            'aceitar','accept','aprovado','approve','aprovada'
-                        ]);
-                 });
-            })
-            ->exists();
-
-        if (!$isEligible) {
-            return back()->with('error','Esta submissão ainda não está aprovada para publicação.');
-        }
-
-        $nextPos = (int) ($edition->submissions()->max('edition_submission.position') ?? 0) + 1;
-
-        $edition->submissions()->attach($sid, [
-            'position' => $nextPos,
-            'added_by' => $r->user()->id,
-            'notes'    => null,
-        ]);
-
-        return back()->with('ok','Submissão adicionada à edição.');
+    $exists = $edition->submissions()->where('submissions.id',$sid)->exists();
+    if ($exists) {
+        return back()->with('warn','Já está na edição.');
     }
+
+    $isEligible = Submission::query()
+        ->where('id',$sid)
+        ->where(function($w){
+            $w->where('status','aceito')
+             ->orWhereExists(function($sub){
+                $sub->select(DB::raw(1))
+                    ->from('reviews')
+                    ->whereColumn('reviews.submission_id','submissions.id')
+                    ->whereNotNull('submitted_opinion_at')
+                    ->whereIn(DB::raw('lower(recommendation)'), [
+                        'aceitar','accept','aprovado','approve','aprovada'
+                    ]);
+             });
+        })
+        ->exists();
+
+    if (!$isEligible) {
+        return back()->with('error','Esta submissão ainda não está aprovada para publicação.');
+    }
+
+    $nextPos = (int) ($edition->submissions()->max('edition_submission.position') ?? 0) + 1;
+
+    $edition->submissions()->attach($sid, [
+        'position' => $nextPos,
+        'added_by' => $r->user()->id,
+        'notes'    => $featured ? 'featured' : null,
+    ]);
+
+    return back()->with('ok','Submissão adicionada à edição.');
+}
+
 
     public function destroy(Request $r, Edition $edition, Submission $submission)
     {
         $edition->submissions()->detach($submission->id);
         return back()->with('ok','Submissão removida da edição.');
     }
+
+    public function toggleHighlight(Request $r, Edition $edition, Submission $submission)
+    {
+        $rel = $edition->submissions()->where('submissions.id', $submission->id)->first();
+        if (!$rel) {
+            return back()->with('error','Publicação não está vinculada a esta edição.');
+        }
+
+        $pivot   = $rel->pivot;
+        $current = trim((string)($pivot->notes ?? ''));
+        $new     = $current === 'featured' ? null : 'featured';
+
+        $edition->submissions()->updateExistingPivot($submission->id, [
+            'notes' => $new,
+        ]);
+
+        return back()->with('ok', $new === 'featured' ? 'Publicação destacada.' : 'Destaque removido.');
+    }
+
 
     public function reorder(Request $r, Edition $edition)
     {

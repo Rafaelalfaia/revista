@@ -9,7 +9,6 @@ return [
       ['label'=>'Categorias',  'route'=>'admin.categories.index',  'can'=>'categories.view'],
       ['label'=>'Usuários',    'route'=>'admin.users.index',       'can'=>'users.view'],
       ['label'=>'Relatórios',  'route'=>'admin.reports.index',     'can'=>'reports.view'],
-      ['label'=>'Sistema',     'route'=>'admin.system.index',      'can'=>'system.view'],
       ['label'=>'Perfil',      'route'=>'profile.edit'],
     ],
 

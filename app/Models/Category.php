@@ -36,4 +36,5 @@ class Category extends Model
     {
         return $this->belongsToMany(User::class, 'reviewer_categories', 'category_id', 'reviewer_id')->withTimestamps();
     }
+
 }

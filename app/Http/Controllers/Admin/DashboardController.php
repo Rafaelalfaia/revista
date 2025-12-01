@@ -45,14 +45,27 @@ class DashboardController extends Controller
                 ->get();
         }) : collect();
 
-        $monthly = $hasSubmissions ? Cache::remember($ck('monthly'), 300, function() use ($from,$to) {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            $monthExpr = "to_char(created_at, 'YYYY-MM')";
+        } elseif ($driver === 'mysql') {
+            $monthExpr = "DATE_FORMAT(created_at, '%Y-%m')";
+        } else {
+
+            $monthExpr = "strftime('%Y-%m', created_at)";
+        }
+
+
+        $monthly = $hasSubmissions ? Cache::remember($ck('monthly'), 300, function() use ($from,$to,$monthExpr) {
             return DB::table('submissions')
-                ->selectRaw("strftime('%Y-%m', created_at) as m, count(*) as n")
+                ->selectRaw("$monthExpr as m, count(*) as n")
                 ->whereBetween('created_at', [$from,$to])
-                ->groupBy(DB::raw("strftime('%Y-%m', created_at)"))
-                ->orderBy(DB::raw("strftime('%Y-%m', created_at)"))
+                ->groupBy(DB::raw($monthExpr))
+                ->orderBy(DB::raw($monthExpr))
                 ->get();
         }) : collect();
+
 
         $recentUsers = $hasUsers ? Cache::remember($ck('recentUsers'), 300, function() {
             return DB::table('users')->select('id','name','email','created_at')->orderByDesc('created_at')->limit(6)->get();

@@ -2,38 +2,39 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\User;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Database\Seeder;
+use Spatie\Permission\Models\Role;
 
 class UsersSeeder extends Seeder
 {
     public function run(): void
     {
-        $email = env('SEED_ADMIN_EMAIL', 'admin@trivento.local');
-        $admin = User::updateOrCreate(
+        $this->mk('Admin',       'admin@admin.com',              'admin',       'Admin');
+        $this->mk('Coordenador', 'coordenador@coordenador.com',  'coordenador', 'Coordenador');
+        $this->mk('Revisor',     'revisor@revisor.com',          'revisor',     'Revisor');
+        $this->mk('Autor',       'autor@autor.com',              'autor',       'Autor');
+    }
+
+    protected function mk(string $nome, string $email, string $senha, string $role): array
+    {
+        $roleModel = Role::firstOrCreate(
+            ['name' => $role, 'guard_name' => 'web']
+        );
+
+        $user = User::updateOrCreate(
             ['email' => $email],
-            ['name' => 'Administrador', 'password' => Hash::make(env('SEED_ADMIN_PASSWORD','password'))]
+            [
+                'name'              => $nome,
+                'password'          => bcrypt($senha),
+                'email_verified_at' => now(),
+            ]
         );
-        if (method_exists($admin, 'assignRole')) $admin->assignRole('Admin');
 
+        if (method_exists($user, 'syncRoles')) {
+            $user->syncRoles([$roleModel->name]);
+        }
 
-        $coord = User::updateOrCreate(
-            ['email' => 'coord@trivento.local'],
-            ['name' => 'Coord', 'password' => Hash::make('password')]
-        );
-        $coord->assignRole('Coordenador');
-
-        $rev = User::updateOrCreate(
-            ['email' => 'revisor@trivento.local'],
-            ['name' => 'Revisor', 'password' => Hash::make('password')]
-        );
-        $rev->assignRole('Revisor');
-
-        $autor = User::updateOrCreate(
-            ['email' => 'autor@trivento.local'],
-            ['name' => 'Autor', 'password' => Hash::make('password')]
-        );
-        $autor->assignRole('Autor');
+        return [$user->email, $user->getRoleNames()->toArray()];
     }
 }

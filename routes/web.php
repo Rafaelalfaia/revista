@@ -3,11 +3,7 @@
 
 use Illuminate\Support\Facades\Route;
 
-// Outras rotas já existentes
 
-Route::get('/desenvolvedores', [DeveloperController::class, 'index'])->name('desenvolvedores');
-
-use App\Http\Controllers\DeveloperController;
 
 use App\Http\Controllers\ProfileController;
 
@@ -40,11 +36,14 @@ use App\Http\Controllers\Autor\DashboardController as AutorDash;
 use App\Http\Controllers\Revisor\ReviewsController as RevisorReviews;
 use App\Http\Controllers\Common\SubmissionCommentController as CommentCtrl;
 
-    
-//Público
-Route::get('/', fn () => view('welcome'));
-Route::get('/desenvolvedores', [\App\Http\Controllers\DeveloperController::class, 'index'])->name('desenvolvedores');
-
+// Site
+use App\Http\Controllers\Site\HomeController;
+use App\Http\Controllers\Site\AuthorGuideController;
+use App\Http\Controllers\Site\EditorialBoardController;
+use App\Http\Controllers\Site\AboutJournalController;
+use App\Http\Controllers\Site\JournalTeamController;
+use App\Http\Controllers\Site\EditionSiteController;
+use App\Http\Controllers\Site\CategorySiteController;
 
 
 
@@ -135,6 +134,11 @@ Route::middleware(['auth','verified','role:Admin'])
         Route::get('/relatorios/export/pdf', [ReportsController::class,'exportPdf'])->name('reports.export.pdf');
 });
 
+Route::patch('admin/editions/{edition}/submissions/{submission}/toggle-highlight', [EditionSubmissionController::class, 'toggleHighlight'])
+    ->name('admin.editions.submissions.toggle-highlight')
+    ->middleware(['auth','role:Admin']);
+
+
 // Coordenador
 Route::middleware(['auth','verified','role:Coordenador|Admin'])
     ->prefix('coordenador')->as('coordenador.')
@@ -217,5 +221,34 @@ Route::middleware(['auth','verified'])
         Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read_all');
         Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])->name('notifications.destroy');
 });
+
+//site
+Route::get('/', [HomeController::class, 'index'])->name('site.home');
+Route::get('/publicacoes/{submission:slug}', [\App\Http\Controllers\Site\SubmissionController::class, 'show'])
+    ->name('site.submissions.show');
+
+Route::get('/para-autores', [AuthorGuideController::class, 'index'])
+    ->name('site.authors.guidelines');
+
+Route::get('/conselho-editorial', [EditorialBoardController::class, 'index'])
+    ->name('site.editorial.board');
+
+Route::get('/sobre-a-revista', [AboutJournalController::class, 'index'])
+    ->name('site.about.journal');
+
+Route::get('/equipe-da-revista', [JournalTeamController::class, 'index'])
+    ->name('site.journal.team');
+
+Route::get('/edicoes', [EditionSiteController::class, 'index'])
+    ->name('site.editions.index');
+
+Route::get('/edicoes/{edition}', [EditionSiteController::class, 'show'])
+    ->name('site.editions.show');
+
+Route::get('/categorias', [CategorySiteController::class, 'index'])
+    ->name('site.categories.index');
+
+Route::get('/categorias/{category}', [CategorySiteController::class, 'show'])
+    ->name('site.categories.show');
 
 require __DIR__.'/auth.php';
